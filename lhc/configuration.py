@@ -6,6 +6,8 @@ import re
 from consts import CONF_FILE_PATH, DEFAULT_CONF, DEFAULT_CONF_ITEMS, CONF_HOSTS_PATH, COMMON_EXTENSIONS
 from consts import SYS_HOSTS_PATH
 from nginx_conf import get_nginx_conf
+from proxy import ProxyDocker, ProxyLocal
+from utils import cached_property
 from utils import is_valid_ip, is_valid_hostname, mkdirs
 
 log = logging.getLogger('lhc')
@@ -32,11 +34,19 @@ class Config(object):
         self._conf = conf
         self._load_hosts()
 
-    @property
+    @cached_property
+    def proxy(self):
+        if self.mode == 'docker':
+            return ProxyDocker(self)
+        elif self.mode == 'local':
+            return ProxyLocal(self)
+        else:
+            raise RuntimeError('unknown mode ' + self.mode)
+
+    @cached_property
     def proxy_ip(self):
         if self._proxy_ip == 'auto':
-            if self.mode == 'local':
-                return '127.0.0.1'
+            return self.proxy.get_ip()
         if not is_valid_ip(self._proxy_ip):
             raise ValueError('invalid proxy_ip %s' % self._proxy_ip)
         return self._proxy_ip
@@ -90,13 +100,15 @@ class Config(object):
             path = os.path.join(CONF_HOSTS_PATH, p)
             if not os.path.isfile(path):
                 continue
-            host = Host.from_path(path, global_=self)
+            host = Host.from_path(path, g=self)
             if host.name in self.hosts:
                 raise ValueError(
                     "duplicate hostname '%s' of file %s and %s" % (host.name, host._path, self.hosts[host.name]._path))
             self.hosts[host.name] = host
 
     def _dumps_hosts(self):
+        if not self.proxy.running():
+            raise log.error('you should run proxy first')
         tpl = '\n'.join([LHC_HOSTS_HEADER, '%s', LHC_HOSTS_FOOTER]) + '\n'
         content = tpl % '\n'.join('%s %s' % (host.proxy_ip, host.name) for host in self.hosts)
         return content
@@ -115,7 +127,7 @@ class Config(object):
             f.write('\n')
             f.write(self._dumps_hosts())
 
-    def is_hosts_activated(self):
+    def hosts_activated(self):
         with open(SYS_HOSTS_PATH, 'r') as f:
             return LHC_HOSTS_CONTENT_REG.search(f.read())
 
@@ -126,10 +138,10 @@ class Config(object):
         if host:
             if not isinstance(host, Host):
                 raise TypeError('host should be instance of ' + str(type(Host)))
-            if not host._global:
-                host._global = self
+            if not host._g:
+                host._g = self
         if not host:
-            host = Host(hostname, global_=self, **kwargs)
+            host = Host(hostname, g=self, **kwargs)
         if hostname in self.hosts:
             if host._path != self.hosts[hostname]._path:
                 os.remove(host._path)
@@ -145,7 +157,7 @@ class Config(object):
 
 class Host(object):
     def __init__(self, name, extensions=None, cache_size_limit=None, cache_expire=None,
-                 cache_key=None, proxy_ip=None, dns_resolver=None, conf=None, path=None, global_=None):
+                 cache_key=None, proxy_ip=None, dns_resolver=None, conf=None, path=None, g=None):
         if not is_valid_hostname(name):
             raise ValueError("invalid hostname '%s'" % (name))
         self.name = name
@@ -157,11 +169,11 @@ class Host(object):
         self._dns_resolver = dns_resolver
         self._conf = conf
         self._path = path or os.path.join(CONF_HOSTS_PATH, self.name)
-        self._global = global_
+        self._g = g
 
     @property
     def extensions_reg(self):
-        exts = self.extensions or (self._global and self._global.extensions)
+        exts = self.extensions or (self._g and self._g.extensions)
         exts = re.split(r'[,|]', exts)
         rt = []
         for ext in exts:
@@ -175,8 +187,15 @@ class Host(object):
     def normalized_name(self):
         return self.name.replace('.', '_').replace('-', '_')
 
+    @property
+    def proxy_ip(self):
+        if self._proxy_ip == 'auto' or not self._proxy_ip:
+            return self._g.proxy_ip
+        else:
+            return self._proxy_ip
+
     @classmethod
-    def from_path(cls, path, global_=None):
+    def from_path(cls, path, g=None):
         cp = ConfigParser.RawConfigParser()
         cp.read(path)
         if len(cp.sections()) != 1:
@@ -198,12 +217,12 @@ class Host(object):
                    dns_resolver=get('dns_resolver'),
                    conf=cp,
                    path=path,
-                   global_=global_)
+                   g=g)
 
     def __getattr__(self, item):
         if not hasattr(self, '_' + item):
             raise AttributeError("'%s' object has no attribute '%s'" % (type(self), item))
-        return getattr(self, '_' + item) or getattr(self._global, item)
+        return getattr(self, '_' + item) or getattr(self._g, item)
 
     def save(self):
         cp = ConfigParser.RawConfigParser()

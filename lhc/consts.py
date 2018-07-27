@@ -1,3 +1,4 @@
+import os
 import platform
 from os import path
 
@@ -5,10 +6,14 @@ from utils import find_executable
 
 SYS_HOSTS_PATH = '/etc/hosts'
 
-CONF_PATH = '/etc/lhc'
-CONF_HOSTS_PATH = path.join(CONF_PATH, 'hosts')
-CONF_FILE_PATH = path.join(CONF_PATH, 'lhc.conf')
-NGINX_CONF_FILE_PATH = path.join(CONF_PATH, 'nginx.conf')
+CONF_PATH = os.getenv('CONF_PATH') or '/etc/lhc'
+CONF_HOSTS_PATH = os.getenv('CONF_HOSTS_PATH') or path.join(CONF_PATH, 'hosts')
+CONF_FILE_PATH = os.getenv('CONF_FILE_PATH') or path.join(CONF_PATH, 'lhc.conf')
+NGINX_CONF_FILE_PATH = os.getenv('NGINX_CONF_FILE_PATH') or path.join(CONF_PATH, 'nginx.conf')
+
+MAC_ALIAS_IP = os.getenv('MAC_ALIAS_IP') or '192.168.221.181'
+NGINX_DOCKER_IMAGE = os.getenv('NGINX_DOCKER_IMAGE') or 'daocloud.io/nginx'
+PROXY_CONTAINER_NAME = os.getenv('PROXY_DOCKER_NAME') or 'lhc_proxy'
 
 COMMON_WEB_EXTENSIONS = ['bmp', 'ejs', 'jpeg', 'pdf', 'ps', 'ttf', 'class', 'eot', 'jpg', 'pict', 'svg', 'webp', 'css',
                          'eps', 'js', 'pls', 'svgz', 'woff', 'csv', 'gif', 'mid', 'png', 'swf', 'woff2', 'doc', 'ico',
@@ -23,8 +28,6 @@ COMMON_EXTENSIONS = {
     '__PKG__': LINUX_PACKAGE_EXTENSIONS,
     '__PIP__': PIP_PACKAGE_EXTENSIONS
 }
-
-MAC_ALIAS_IP = '192.168.221.181'
 
 DEFAULT_CONF_ITEMS = {
     'extensions': '__WEB__',
@@ -63,9 +66,6 @@ cache_path = {cache_path}
 # set it when use a outside proxy server
 proxy_ip = {proxy_ip}
 """.format(**DEFAULT_CONF_ITEMS)
-
-NGINX_DOCKER_IMAGE = 'daocloud.io/nginx'
-PROXY_DOCKER_NAME = 'lhc_proxy'
 
 MAC = 'Darwin' in platform.platform()
 LINUX = 'Linux' in platform.platform()

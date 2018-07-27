@@ -1,7 +1,7 @@
 import subprocess
 import sys
 
-from consts import NGINX_DOCKER_IMAGE, PROXY_DOCKER_NAME, NGINX_CONF_FILE_PATH, MAC, MAC_ALIAS_IP
+from consts import NGINX_DOCKER_IMAGE, PROXY_CONTAINER_NAME, NGINX_CONF_FILE_PATH, MAC, MAC_ALIAS_IP
 from nginx_conf import get_nginx_conf
 from utils import find_executable, require_root
 
@@ -14,9 +14,6 @@ class Proxy(object):
         pass
 
     def stop(self):
-        pass
-
-    def install(self):
         pass
 
     def uninstall(self):
@@ -74,8 +71,8 @@ class ProxyDocker(Proxy):
 
     def running(self):
         try:
-            return subprocess.check_output("docker container inspect %s -f '{{.State.Status}}'" % PROXY_DOCKER_NAME,
-                                           shell=True).strip().lower() == 'running'
+            return subprocess.check_output("docker container inspect %s -f '{{.State.Status}}'" % PROXY_CONTAINER_NAME,
+                                           shell=True, stderr=subprocess.PIPE).strip().lower() == 'running'
         except subprocess.CalledProcessError:
             return False
 
@@ -83,7 +80,7 @@ class ProxyDocker(Proxy):
 
         try:
             return subprocess.check_output(
-                "docker container inspect %s -f '{{.NetworkSettings.Networks.bridge.IPAddress}}'" % PROXY_DOCKER_NAME,
+                "docker container inspect %s -f '{{.NetworkSettings.Networks.bridge.IPAddress}}'" % PROXY_CONTAINER_NAME,
                 shell=True).strip()
         except subprocess.CalledProcessError:
             return RuntimeError('proxy not running')
@@ -91,7 +88,7 @@ class ProxyDocker(Proxy):
     def run(self):
         require_root()
         self.dump_nginx_conf()
-        cmd = ['docker', 'run', '--name', PROXY_DOCKER_NAME, '-d', '--restart', 'always',
+        cmd = ['docker', 'run', '--name', PROXY_CONTAINER_NAME, '-d', '--restart', 'always',
                '-v', NGINX_CONF_FILE_PATH + ':/etc/nginx/nginx.conf',
                '--dns', self.config.dns_resolver]
         if MAC:
