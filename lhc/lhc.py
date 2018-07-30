@@ -29,7 +29,10 @@ class OrderedGroup(click.Group):
         return self.commands
 
 
-@click.group(cls=OrderedGroup)
+CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
+
+
+@click.group(cls=OrderedGroup, context_settings=CONTEXT_SETTINGS)
 def main():
     """
     LHC (Local HTTP Cache), cache static files to your local machine
