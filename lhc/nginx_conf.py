@@ -5,7 +5,7 @@ env = jinja2.Environment(autoescape=False)
 env.filters['append_spaces'] = lambda s, n: s and ('\n' + ' ' * n).join(s.splitlines())
 
 CONF_TMPL = env.from_string(u'''\
-user nginx;
+user root;
 worker_processes  1;
 
 error_log  /var/log/nginx-error.log;
