@@ -1,3 +1,4 @@
+bitmath
 click
 ipaddress
 Jinja2

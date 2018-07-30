@@ -2,18 +2,19 @@ import ConfigParser
 import logging
 import os
 import re
+import shutil
 
 from consts import CONF_FILE_PATH, DEFAULT_CONF, DEFAULT_CONF_ITEMS, CONF_HOSTS_PATH, COMMON_EXTENSIONS
 from consts import SYS_HOSTS_PATH
-from nginx_conf import get_nginx_conf
+from errors import ConfigError
 from proxy import ProxyDocker, ProxyLocal
-from utils import cached_property
+from utils import cached_property, warp_join
 from utils import is_valid_ip, is_valid_hostname, mkdirs
 
 log = logging.getLogger('lhc')
 
-LHC_HOSTS_HEADER = '# ---------- BEGIN LHC HOSTS FILE ----------'
-LHC_HOSTS_FOOTER = '# ---------- END LHC HOSTS FILE ------------'
+LHC_HOSTS_HEADER = '# ---------- BEGIN LHC HOSTS CONTENT ----------'
+LHC_HOSTS_FOOTER = '# ---------- END LHC HOSTS CONTENT ------------'
 LHC_HOSTS_CONTENT_REG = re.compile(LHC_HOSTS_HEADER + '.*' + LHC_HOSTS_FOOTER, flags=re.DOTALL)
 
 
@@ -41,14 +42,14 @@ class Config(object):
         elif self.mode == 'local':
             return ProxyLocal(self)
         else:
-            raise RuntimeError('unknown mode ' + self.mode)
+            raise ConfigError('unknown mode ' + self.mode)
 
     @cached_property
     def proxy_ip(self):
         if self._proxy_ip == 'auto':
             return self.proxy.get_ip()
         if not is_valid_ip(self._proxy_ip):
-            raise ValueError('invalid proxy_ip %s' % self._proxy_ip)
+            raise ConfigError('invalid proxy_ip %s' % self._proxy_ip)
         return self._proxy_ip
 
     @classmethod
@@ -102,15 +103,15 @@ class Config(object):
                 continue
             host = Host.from_path(path, g=self)
             if host.name in self.hosts:
-                raise ValueError(
+                raise ConfigError(
                     "duplicate hostname '%s' of file %s and %s" % (host.name, host._path, self.hosts[host.name]._path))
             self.hosts[host.name] = host
 
     def _dumps_hosts(self):
         if not self.proxy.running():
-            raise log.error('you should run proxy first')
+            raise ConfigError('you should run proxy first')
         tpl = '\n'.join([LHC_HOSTS_HEADER, '%s', LHC_HOSTS_FOOTER]) + '\n'
-        content = tpl % '\n'.join('%s %s' % (host.proxy_ip, host.name) for host in self.hosts)
+        content = tpl % '\n'.join('%s %s' % (host.proxy_ip, host.name) for host in self.hosts.values())
         return content
 
     def deactivate_hosts(self):
@@ -137,7 +138,7 @@ class Config(object):
     def set_host(self, hostname, host=None, **kwargs):
         if host:
             if not isinstance(host, Host):
-                raise TypeError('host should be instance of ' + str(type(Host)))
+                raise ConfigError('host should be instance of ' + str(type(Host)))
             if not host._g:
                 host._g = self
         if not host:
@@ -147,21 +148,34 @@ class Config(object):
                 os.remove(host._path)
         self.hosts[hostname] = host
         host.save()
+        if self.hosts_activated():
+            self.activate_hosts()
+        return host
 
     def delete_host(self, hostname):
+        if hostname not in self.hosts:
+            raise ConfigError('hostname not found')
         host = self.hosts.pop(hostname)
         if os.path.isfile(host._path):
             os.remove(host._path)
+        if self.hosts_activated():
+            self.activate_hosts()
         return host
+
+    def purge(self, hostname):
+        if hostname not in self.hosts:
+            raise ConfigError('hostname not found')
+        host = self.hosts[hostname]
+        shutil.rmtree(host.cache_path)
 
 
 class Host(object):
     def __init__(self, name, extensions=None, cache_size_limit=None, cache_expire=None,
                  cache_key=None, proxy_ip=None, dns_resolver=None, conf=None, path=None, g=None):
         if not is_valid_hostname(name):
-            raise ValueError("invalid hostname '%s'" % (name))
+            raise ConfigError("invalid hostname '%s'" % (name))
         self.name = name
-        self.extensions = extensions
+        self._extensions = extensions
         self._cache_size_limit = cache_size_limit
         self._cache_expire = cache_expire
         self._cache_key = cache_key
@@ -173,7 +187,7 @@ class Host(object):
 
     @property
     def extensions_reg(self):
-        exts = self.extensions or (self._g and self._g.extensions)
+        exts = self._extensions or (self._g and self._g.extensions)
         exts = re.split(r'[,|]', exts)
         rt = []
         for ext in exts:
@@ -184,8 +198,22 @@ class Host(object):
         return '|'.join(set(rt))
 
     @property
+    def extensions_display(self):
+        exts = self._extensions or (self._g and self._g.extensions)
+        exts = re.split(r'[,|]', exts)
+        return warp_join(',', exts, 20)
+
+    @property
     def normalized_name(self):
         return self.name.replace('.', '_').replace('-', '_')
+
+    @property
+    def cache_name(self):
+        return 'cache_' + self.normalized_name
+
+    @property
+    def cache_path(self):
+        return os.path.join(self._g.cache_path, self.cache_name)
 
     @property
     def proxy_ip(self):
@@ -199,7 +227,7 @@ class Host(object):
         cp = ConfigParser.RawConfigParser()
         cp.read(path)
         if len(cp.sections()) != 1:
-            raise ValueError('host conf file %s must have exactly 1 section' % path)
+            raise ConfigError('host conf file %s must have exactly 1 section' % path)
         name = cp.sections()[0]
 
         def get(item):
@@ -221,13 +249,13 @@ class Host(object):
 
     def __getattr__(self, item):
         if not hasattr(self, '_' + item):
-            raise AttributeError("'%s' object has no attribute '%s'" % (type(self), item))
+            raise ConfigError("'%s' object has no attribute '%s'" % (type(self), item))
         return getattr(self, '_' + item) or getattr(self._g, item)
 
     def save(self):
         cp = ConfigParser.RawConfigParser()
         cp.add_section(self.name)
-        self.extensions and cp.set(self.name, 'extensions', self.extensions)
+        self._extensions and cp.set(self.name, 'extensions', self._extensions)
         self._cache_size_limit and cp.set(self.name, 'cache_size_limit', self._cache_size_limit)
         self._cache_key and cp.set(self.name, 'cache_key', self._cache_key)
         self._proxy_ip and cp.set(self.name, 'proxy_ip', self._proxy_ip)
@@ -236,14 +264,3 @@ class Host(object):
             mkdirs(os.path.dirname(self._path))
         with open(self._path, 'wb') as f:
             cp.write(f)
-
-
-if __name__ == '__main__':
-    CONF_FILE_PATH = '/tmp/conf_file'
-    CONF_HOSTS_PATH = '/tmp/hosts'
-    LHC_HOSTS_PATH = '/tmp/lhc_hosts_path'
-    SYS_HOSTS_PATH = '/tmp/sys_hosts_path'
-
-    c = Config.load()
-    c.set_host('baidu.com')
-    print(get_nginx_conf(c))

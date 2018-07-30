@@ -1,11 +1,16 @@
 import os
 import re
+import subprocess
 import sys
 
 import ipaddress
 
 
 def require_root():
+    from consts import DEBUG
+
+    if DEBUG:
+        return
     if os.geteuid() != 0:
         sys.exit('need run as root')
 
@@ -94,3 +99,21 @@ def warp_join(d, iterable, n=30, newline='\n'):
     if temp:
         lines.append(temp)
     return newline.join(lines)[:-len(d)]
+
+
+def get_dir_size_walk(start_path='.'):
+    total_size = 0
+    for dirpath, dirnames, filenames in os.walk(start_path):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            total_size += os.path.getsize(fp)
+        for f in dirnames:
+            fp = os.path.join(dirpath, f)
+            total_size += os.path.getsize(fp)
+    return total_size
+
+
+def get_dir_size(start_path='.'):
+    path = os.path.abspath(os.path.expanduser(start_path))
+    out = subprocess.check_output([find_executable('du'), '-sb', path]).strip()
+    return int(out.split()[0])

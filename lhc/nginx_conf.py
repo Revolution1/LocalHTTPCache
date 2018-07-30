@@ -59,17 +59,31 @@ http {
         ''      close;
     }
 	    
-    {% for host in config.hosts.values() %}
-    {% set cache_name = 'cache-' + host.normalized_name %}
-    
+	server {
+        listen      80;
+        server_name _;
+        
+        location / {
+            root   /usr/share/nginx/html;
+            index  index.html index.htm;
+        }
+	}
+	    
+    {% for host in config.hosts.values() %}    
 	# 缓存配置1:2表示第一级目录1个字符，第二级目录2个字符；cache1:20m表示每个缓存区域20M空间；
 	# 3d表示3天后缓存过期
-	proxy_cache_path  {{config.cache_path}}/{{cache_name}}  levels=1:2 keys_zone={{cache_name}}:20m inactive={{host.cache_expire}} max_size={{host.cache_size_limit}};			   
+	proxy_cache_path  {{host.cache_path}}  levels=2 keys_zone={{host.cache_name}}:20m inactive={{host.cache_expire}} max_size={{host.cache_size_limit}};			   
 
     server {
-        resolver 114.114.114.114;
+        resolver {{host.dns_resolver}};
         listen      80;
         server_name {{host.name}};
+        
+        # listen 443 ssl;
+        # ssl on;
+        # ssl_certificate /etc/letsencrypt/live/your.proxy.domain/fullchain.pem;
+        # ssl_certificate_key /etc/letsencrypt/live/your.proxy.domain/privkey.pem;
+        
          
         # cache purge 
 		# location ~ /purge(/.*) {
@@ -79,7 +93,7 @@ http {
 
 		add_header  X-Qequest-Time '$request_time';
 		
-		location \ {
+		location / {
 				proxy_pass http://$host:$server_port;
 				proxy_http_version 1.1;
 				proxy_set_header Upgrade $http_upgrade;
@@ -87,8 +101,9 @@ http {
 		}
 		
 		# proxy config
+		# TODO location ~ (?<!(Packages|INDEX))\.(tar|zip|gz|apk|iso|deb|rpm)
         location ~ \.({{ host.extensions_reg }}) {
-                proxy_pass http://$host:$server_port;
+                proxy_pass $scheme://$host:$server_port;
                 # proxy_next_upstream http_502 http_504 error timeout invalid_header;
                 proxy_set_header Host $host;
                 proxy_set_header User-Agent $http_user_agent;
@@ -102,9 +117,10 @@ http {
 				proxy_set_header Connection "upgrade";
 
                 add_header Nginx-Cache $upstream_cache_status;
-                proxy_cache                    {{cache_name}};
+                proxy_cache               {{host.cache_name}};
                 proxy_cache_key            {{host.cache_key}};
                 proxy_cache_valid                 200 304 30m;
+                proxy_cache_methods                  GET HEAD;
                 expires                 {{host.cache_expire}};
         }
 	}
