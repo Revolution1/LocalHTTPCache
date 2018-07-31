@@ -37,7 +37,7 @@ setup(
     author="Renjie Cai",
     author_email='revol.cai@gmail.com',
     url='https://github.com/Revolution1/LocalHTTPCache',
-    packages=find_packages(include=['lhc*']),
+    packages=['lhc'],
     entry_points={
         'console_scripts': [
             'lhc=lhc.lhc:main'
