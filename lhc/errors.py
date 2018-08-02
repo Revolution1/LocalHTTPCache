@@ -10,6 +10,9 @@ class LHCError(Exception):
     pass
 
 
+class SSLError(Exception):
+    pass
+
 class ProxyError(LHCError):
     pass
 

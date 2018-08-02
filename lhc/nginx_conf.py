@@ -79,10 +79,9 @@ http {
         listen      80;
         server_name {{host.name}};
         
-        # listen 443 ssl;
-        # ssl on;
-        # ssl_certificate /etc/letsencrypt/live/your.proxy.domain/fullchain.pem;
-        # ssl_certificate_key /etc/letsencrypt/live/your.proxy.domain/privkey.pem;
+        listen 443 ssl;
+        ssl_certificate {{host.cert_path}};
+        ssl_certificate_key {{host.pkey_path}};
         
          
         # cache purge 
@@ -94,7 +93,7 @@ http {
 		add_header  X-Qequest-Time '$request_time';
 		
 		location / {
-				proxy_pass http://$host:$server_port;
+				proxy_pass $scheme://$host:$server_port;
 				proxy_http_version 1.1;
 				proxy_set_header Upgrade $http_upgrade;
 				proxy_set_header Connection "upgrade";

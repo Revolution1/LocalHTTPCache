@@ -9,13 +9,19 @@ SYS_HOSTS_PATH = '/etc/hosts'
 DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', 'y', '1')
 
 CONF_PATH = os.getenv('CONF_PATH') or '/etc/lhc'
-CONF_HOSTS_PATH = os.getenv('CONF_HOSTS_PATH') or path.join(CONF_PATH, 'hosts')
-CONF_FILE_PATH = os.getenv('CONF_FILE_PATH') or path.join(CONF_PATH, 'lhc.conf')
-NGINX_CONF_FILE_PATH = os.getenv('NGINX_CONF_FILE_PATH') or path.join(CONF_PATH, 'nginx.conf')
+CONF_HOSTS_PATH = path.join(CONF_PATH, 'hosts')
+CONF_FILE_PATH = path.join(CONF_PATH, 'lhc.conf')
+NGINX_CONF_FILE_PATH = path.join(CONF_PATH, 'nginx.conf')
 
 MAC_ALIAS_IP = os.getenv('MAC_ALIAS_IP') or '192.168.221.181'
 NGINX_DOCKER_IMAGE = os.getenv('NGINX_DOCKER_IMAGE') or 'daocloud.io/nginx'
 PROXY_CONTAINER_NAME = os.getenv('PROXY_DOCKER_NAME') or 'lhc-proxy'
+
+CERT_FILES_PATH = path.join(CONF_PATH, 'certs')
+CA_CERT_FILES_PATH = path.join(CERT_FILES_PATH, 'ca')
+HOST_CERTS_FILES_PATH = path.join(CERT_FILES_PATH, 'hosts')
+CA_CN = 'LHC Self-Signed CA'
+CA_SUB = '/O=Wakanda/OU=LHC/CN=' + CA_CN
 
 COMMON_EXTENSIONS = {
     '__WEB__': ['bmp', 'ejs', 'jpeg', 'pdf', 'ps', 'ttf', 'class', 'eot', 'jpg', 'pict', 'svg', 'webp', 'css',
@@ -32,9 +38,11 @@ DEFAULT_CONF_ITEMS = {
     'cache_expire': '3d',
     'cache_key': '$host$uri$is_args$args',
     'http_port': 80,
+    'https_port': 443,
     'mode': 'docker',
     'proxy_ip': 'auto',
-    'dns_resolver': '114.114.114.114'
+    'dns_resolver': '114.114.114.114',
+    'ssl': 'true'
 }
 
 DEFAULT_CONF = """\
@@ -51,6 +59,7 @@ cache_size_limit = {cache_size_limit}
 cache_expire = {cache_expire}
 cache_key = {cache_key}
 http_port = {http_port}
+https_port = {https_port}
 dns_resolver = {dns_resolver}
 
 # run proxy as local process (nginx) or as docker container
@@ -69,5 +78,5 @@ proxy_ip = {proxy_ip}
 MAC = 'Darwin' in platform.platform()
 LINUX = 'Linux' in platform.platform()
 AMD64 = 'x86_64' in platform.platform()
-REDHAT = find_executable('yum') or find_executable('dnf')
-DEBIAN = find_executable('apt') or find_executable('apt-get')
+REDHAT = os.path.exists('/etc/redhat-release')
+DEBIAN = find_executable('apt-get')

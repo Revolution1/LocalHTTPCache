@@ -8,7 +8,7 @@ from consts import CONF_FILE_PATH, DEFAULT_CONF, DEFAULT_CONF_ITEMS, CONF_HOSTS_
 from consts import SYS_HOSTS_PATH
 from errors import ConfigError
 from proxy import ProxyDocker, ProxyLocal
-from utils import cached_property, warp_join
+from utils import cached_property, warp_join, b2s
 from utils import is_valid_ip, is_valid_hostname, mkdirs
 
 log = logging.getLogger('lhc')
@@ -20,7 +20,8 @@ LHC_HOSTS_CONTENT_REG = re.compile(LHC_HOSTS_HEADER + '.*' + LHC_HOSTS_FOOTER, f
 
 class Config(object):
     def __init__(self, extensions=None, cache_path=None, cache_size_limit=None, cache_expire=None,
-                 cache_key=None, http_port=None, mode=None, proxy_ip=None, dns_resolver=None, conf=None):
+                 cache_key=None, http_port=None, https_port=None, mode=None, proxy_ip=None, dns_resolver=None, ssl=None,
+                 conf=None):
         self.extensions = extensions
         if cache_path:
             cache_path = cache_path.rstrip('/')
@@ -29,9 +30,11 @@ class Config(object):
         self.cache_expire = cache_expire
         self.cache_key = cache_key
         self.http_port = http_port
+        self.https_port = https_port
         self.mode = mode
         self._proxy_ip = proxy_ip
         self.dns_resolver = dns_resolver
+        self.ssl = ssl
         self._conf = conf
         self._load_hosts()
 
@@ -68,9 +71,11 @@ class Config(object):
             cache_expire=cp.get('global', 'cache_expire'),
             cache_key=cp.get('global', 'cache_key'),
             http_port=cp.get('global', 'http_port'),
+            https_port=cp.get('global', 'https_port'),
             mode=cp.get('global', 'mode'),
             dns_resolver=cp.get('global', 'dns_resolver'),
             proxy_ip=cp.get('global', 'proxy_ip'),
+            ssl=cp.getboolean('global', 'ssl'),
             conf=cp,
         )
 
@@ -83,9 +88,11 @@ class Config(object):
         self.cache_expire and cp.set('global', 'cache_expire', self.cache_expire)
         self.cache_key and cp.set('global', 'cache_key', self.cache_key)
         self.http_port and cp.set('global', 'http_port', self.http_port)
+        self.https_port and cp.set('global', 'https_port', self.https_port)
         self.dns_resolver and cp.set('global', 'dns_resolver', self.dns_resolver)
         self.mode and cp.set('global', 'mode', self.mode)
         self._proxy_ip and cp.set('global', 'proxy_ip', self._proxy_ip)
+        self.ssl and b2s(cp.set('global', 'ssl', self.ssl))
 
         with open(CONF_FILE_PATH, 'wb') as f:
             cp.write(f)
@@ -148,6 +155,9 @@ class Config(object):
                 os.remove(host._path)
         self.hosts[hostname] = host
         host.save()
+        if not os.path.exists(host.cert_path):
+            log.info('generating cert for ' + host.name)
+            host.gen_certs()
         if self.hosts_activated():
             self.activate_hosts()
         return host
@@ -184,6 +194,21 @@ class Host(object):
         self._conf = conf
         self._path = path or os.path.join(CONF_HOSTS_PATH, self.name)
         self._g = g
+
+    @cached_property
+    def certs_path(self):
+        return self._g.proxy.get_host_cert_paths(self.name)
+
+    @property
+    def pkey_path(self):
+        return self.certs_path[1]
+
+    @property
+    def cert_path(self):
+        return self.certs_path[2]
+
+    def gen_certs(self):
+        self._g.proxy.gen_and_sign_certs_for(self.name)
 
     @property
     def extensions_reg(self):

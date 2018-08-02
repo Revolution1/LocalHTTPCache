@@ -117,3 +117,20 @@ def get_dir_size(start_path='.'):
     path = os.path.abspath(os.path.expanduser(start_path))
     out = subprocess.check_output([find_executable('du'), '-sb', path]).strip()
     return int(out.split()[0])
+
+
+def b2s(b):
+    return str(b).lower()
+
+
+def s2b(s):
+    if s is None:
+        return
+    if isinstance(s, bool):
+        return s
+    s = s.lower()
+    if s in ('y', 'yes', 'on', '1', 'true', 't'):
+        return True
+    if s in ('n', 'no', 'off', '0', 'false', 'f'):
+        return False
+    raise ValueError('Unknown flag %s' % s)

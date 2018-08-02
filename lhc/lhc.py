@@ -14,7 +14,11 @@ from errors import handle_error
 from utils import warp_join, require_root
 
 log = logging.getLogger('lhc')
-log.addHandler(logging.StreamHandler())
+hdlr = logging.StreamHandler()
+# hdlr.setFormatter(logging.Formatter('%(filename)-25s %(lineno)4d %(levelname)-8s %(message)s'))
+hdlr.setFormatter(logging.Formatter('[%(levelname)s] %(message)s'))
+log.addHandler(hdlr)
+
 log.setLevel(logging.INFO)
 if DEBUG:
     log.setLevel(logging.DEBUG)
@@ -54,6 +58,11 @@ def info(verbose):
     print('Proxy:')
     print('    Mode: %s' % config.mode)
     print('    Status: %s' % ('Running' if running else 'Stopped'))
+    print('    CA Cert: %s' % config.proxy.ca_status())
+    print('    HTTP Port: %s' % config.http_port)
+    print('    HTTPS Port: %s' % config.https_port)
+    print('    SSL: %s' % config.ssl)
+
     print()
     print('Hosts:')
     print('    Status: %s' % ('Activated' if config.hosts_activated() else 'Deactivated'))
@@ -68,7 +77,6 @@ def info(verbose):
         print('    CacheSizeLimit: %s' % config.cache_size_limit)
         print('    CacheExpire: %s' % config.cache_expire)
         print('    CacheKey: %s' % config.cache_key)
-        print('    HttpPort: %s' % config.http_port)
         print('    DnsResolver: %s' % config.dns_resolver)
         print()
         print('Consts:')
@@ -195,7 +203,7 @@ def df(h):
     """
     from utils import get_dir_size
     import bitmath
-    bitmath.format_string = "{value:.1f}{unit}"
+    bitmath.format_string = "{value:.1f} {unit}"
     headers = ('HOST', 'CACHE PATH', 'LIMIT', 'DISK USAGE')
     data = []
     for host in config.hosts.values():
@@ -217,6 +225,30 @@ def purge(hostname):
     purge cache of a host
     """
     config.purge(hostname)
+    log.info('OK')
+
+
+@main.command('gen-ca')
+@handle_error
+def gen_ca():
+    """
+    generate self-signed ca certificate
+    """
+    require_root()
+
+    config.proxy.gen_ca_certs()
+    log.info('OK')
+
+
+@main.command('install-ca')
+@handle_error
+def install_ca():
+    """
+    install ca to system's certificate chain
+    """
+    require_root()
+
+    config.proxy.install_ca_cert()
     log.info('OK')
 
 
