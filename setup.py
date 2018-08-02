@@ -31,7 +31,7 @@ setup_requirements = [
 
 setup(
     name='local-http-cache',
-    version='0.0.1',
+    version='0.0.2',
     description="Tool that helps you setting up a local proxy to cache static files",
     long_description=readme,
     author="Renjie Cai",
